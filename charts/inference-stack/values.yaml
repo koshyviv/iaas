@@ -1,0 +1,177 @@
+# Inference Stack - Umbrella Chart Values
+# This file contains the default configuration for all components
+
+global:
+  # Global settings that apply to all components
+  storageClass: ""  # Use default storage class
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# MetalLB - LoadBalancer for bare metal
+metallb:
+  enabled: true
+  # Configure your IP address pool
+  ipAddressPools:
+    - name: default
+      addresses: 
+        - "10.0.0.240-10.0.0.250"  # CHANGE THIS to your available IP range
+  l2Advertisements:
+    - ipAddressPools: ["default"]
+
+# Ingress NGINX - HTTP/HTTPS routing
+ingress-nginx:
+  enabled: true
+  controller:
+    service:
+      type: LoadBalancer
+      # MetalLB will assign an IP from the pool above
+    metrics:
+      enabled: true
+    admissionWebhooks:
+      enabled: false  # Simplify setup for demo
+
+# Metrics Server - For kubectl top and HPA
+metrics-server:
+  enabled: true
+  args:
+    - --kubelet-insecure-tls  # For demo clusters without proper TLS
+
+# PostgreSQL - Database for LiteLLM keys and usage
+postgres:
+  enabled: true
+  auth:
+    username: litellm
+    password: litellm123  # CHANGE THIS in production
+    database: litellmdb
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+  metrics:
+    enabled: true
+
+# Redis - Cache for LiteLLM
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    password: "redispass"  # CHANGE THIS in production
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# LiteLLM - Router and API gateway (deployed separately as OCI chart)
+litellm:
+  enabled: false  # Deployed separately due to OCI chart
+  # Configuration will be in env/litellm-values.yaml
+
+# Open WebUI - Chat interface
+open-webui:
+  enabled: false  # Deploy separately with env/openwebui-values.yaml or enable here if using umbrella
+  env:
+    - name: OPENAI_API_BASE_URL
+      value: "http://litellm.router.svc.cluster.local:4000/v1"
+    - name: OPENAI_API_KEY
+      value: "sk-admin-REPLACE"  # CHANGE THIS to match LiteLLM master key
+  service:
+    type: LoadBalancer
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: inference.local  # CHANGE THIS to your domain
+        paths: 
+          - path: "/"
+            pathType: Prefix
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# Ollama Model Backends
+# Each model runs on a different node for demonstration
+
+ollama-llama31:
+  enabled: false  # Enable when deploying via umbrella; otherwise deploy with env/ollama-llama31-values.yaml
+  nameOverride: "ollama-llama31"
+  nodeSelector:
+    kubernetes.io/hostname: k8s-w-1  # CHANGE THIS to your worker node name
+  service:
+    type: ClusterIP
+    port: 11434
+  persistentVolume:
+    enabled: true
+    size: 30Gi
+  ollama:
+    models:
+      pull: ["llama3.1:8b"]
+      run: ["llama3.1:8b"]
+  resources:
+    requests:
+      cpu: "1"
+      memory: "4Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+
+ollama-mistral:
+  enabled: false  # Enable when deploying via umbrella; otherwise deploy with env/ollama-mistral-values.yaml
+  nameOverride: "ollama-mistral"
+  nodeSelector:
+    kubernetes.io/hostname: k8s-w-2  # CHANGE THIS to your worker node name
+  service:
+    type: ClusterIP
+    port: 11434
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+  ollama:
+    models:
+      pull: ["mistral"]
+      run: ["mistral"]
+  resources:
+    requests:
+      cpu: "1"
+      memory: "3Gi"
+    limits:
+      cpu: "4"
+      memory: "6Gi"
+
+ollama-phi3:
+  enabled: false  # Enable when deploying via umbrella; otherwise deploy with env/ollama-phi3-values.yaml
+  nameOverride: "ollama-phi3"
+  nodeSelector:
+    kubernetes.io/hostname: k8s-cp-1  # CHANGE THIS to your control plane node name
+  service:
+    type: ClusterIP
+    port: 11434
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+  ollama:
+    models:
+      pull: ["phi3:mini"]
+      run: ["phi3:mini"]
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+# Additional configuration for production
+monitoring:
+  enabled: false  # Enable when adding Prometheus/Grafana
+  
+security:
+  networkPolicies:
+    enabled: false  # Enable for production
+  podSecurityPolicies:
+    enabled: false  # Enable for production
+
+# Custom resources and configurations
+customResources:
+  # Additional Kubernetes resources can be defined here
+  enabled: false

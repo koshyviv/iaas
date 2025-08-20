@@ -1,0 +1,166 @@
+# Ingress NGINX Controller Configuration
+# Provides HTTP/HTTPS routing and TLS termination
+
+controller:
+  # Use LoadBalancer service type (MetalLB will assign external IP)
+  service:
+    type: LoadBalancer
+    # External traffic policy for better performance
+    externalTrafficPolicy: Local
+    # Optional: specify LoadBalancer IP
+    # loadBalancerIP: "10.0.0.241"
+    
+    # Enable HTTP and HTTPS
+    ports:
+      http: 80
+      https: 443
+    
+    # Enable proxy protocol if your load balancer supports it
+    # annotations:
+    #   service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+
+  # Controller configuration
+  config:
+    # Enable real IP forwarding
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    use-proxy-protocol: "false"
+    
+    # SSL configuration
+    ssl-redirect: "false"  # Set to true in production with TLS
+    force-ssl-redirect: "false"
+    
+    # Performance tuning
+    worker-processes: "auto"
+    max-worker-connections: "16384"
+    worker-rlimit-nofile: "65536"
+    
+    # Client settings
+    client-max-body-size: "100m"
+    client-body-buffer-size: "1m"
+    proxy-body-size: "100m"
+    
+    # Keep alive settings
+    upstream-keepalive-connections: "320"
+    upstream-keepalive-requests: "10000"
+    upstream-keepalive-timeout: "60"
+    
+    # Logging
+    log-format-escape-json: "true"
+    log-format-upstream: '{"timestamp":"$time_iso8601","request_id":"$req_id","remote_addr":"$remote_addr","x_forward_for":"$proxy_add_x_forwarded_for","request_method":"$request_method","request_uri":"$request_uri","uri":"$uri","request_proto":"$server_protocol","status":$status,"request_length":$request_length,"request_time":$request_time,"bytes_sent":$bytes_sent,"body_bytes_sent":$body_bytes_sent,"referer":"$http_referer","user_agent":"$http_user_agent","upstream_addr":"$upstream_addr","upstream_status":"$upstream_status","upstream_response_time":"$upstream_response_time","upstream_response_length":"$upstream_response_length","upstream_cache_status":"$upstream_cache_status"}'
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Auto-scaling
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Node affinity - spread across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - ingress-nginx
+            topologyKey: kubernetes.io/hostname
+
+  # Tolerations to run on all nodes
+  tolerations: []
+
+  # Security context
+  containerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    allowPrivilegeEscalation: true
+    capabilities:
+      drop:
+        - ALL
+      add:
+        - NET_BIND_SERVICE
+
+  # Metrics and monitoring
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+    serviceMonitor:
+      enabled: false  # Enable when Prometheus is deployed
+
+  # Health checks
+  livenessProbe:
+    httpGet:
+      path: "/healthz"
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+
+  readinessProbe:
+    httpGet:
+      path: "/healthz"
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+# Default backend (optional)
+defaultBackend:
+  enabled: true
+  image:
+    repository: registry.k8s.io/defaultbackend-amd64
+    tag: "1.5"
+  resources:
+    limits:
+      cpu: 10m
+      memory: 20Mi
+    requests:
+      cpu: 10m
+      memory: 20Mi
+
+# RBAC
+rbac:
+  create: true
+  scope: false
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: true
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network policy (enable in production)
+networkPolicy:
+  enabled: false
+
+# Admission webhooks (disable for simplicity)
+admissionWebhooks:
+  enabled: false

@@ -1,0 +1,172 @@
+🚀 Inference Stack has been deployed!
+
+## 🔍 Check Deployment Status
+
+Check if all components are running:
+```bash
+kubectl get pods --all-namespaces
+kubectl get svc --all-namespaces
+```
+
+## 🌐 Access Points
+
+### Web UI (Open WebUI)
+{{- if .Values.open-webui.enabled }}
+{{- if .Values.open-webui.ingress.enabled }}
+- Ingress: http://{{ (index .Values.open-webui.ingress.hosts 0).host }}
+{{- end }}
+- LoadBalancer: Get external IP with `kubectl get svc -n {{ .Release.Namespace }} {{ include "inference-stack.fullname" . }}-open-webui`
+{{- else }}
+Web UI is disabled
+{{- end }}
+
+### LiteLLM API Endpoint
+- Internal: http://litellm.router.svc.cluster.local:4000
+- Port forward: `kubectl port-forward -n router svc/litellm 4000:4000`
+
+## 🧪 Test the Stack
+
+1. **Port forward to LiteLLM:**
+```bash
+kubectl -n router port-forward svc/litellm 4000:4000 &
+```
+
+2. **Test different models:**
+```bash
+# Test Llama 3.1
+curl -s http://127.0.0.1:4000/v1/chat/completions \
+  -H 'Authorization: Bearer sk-admin-REPLACE' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"llama31-local","messages":[{"role":"user","content":"Hello from Llama!"}]}'
+
+# Test Mistral
+curl -s http://127.0.0.1:4000/v1/chat/completions \
+  -H 'Authorization: Bearer sk-admin-REPLACE' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"mistral-local","messages":[{"role":"user","content":"Hello from Mistral!"}]}'
+
+# Test Phi3
+curl -s http://127.0.0.1:4000/v1/chat/completions \
+  -H 'Authorization: Bearer sk-admin-REPLACE' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"phi3-mini-local","messages":[{"role":"user","content":"Hello from Phi3!"}]}'
+```
+
+## 📊 Monitoring
+
+### Check Model Backends
+```bash
+# Check Ollama pods
+kubectl get pods -n models -o wide
+
+# Check model logs
+kubectl logs -n models deploy/ollama-llama31
+kubectl logs -n models deploy/ollama-mistral
+kubectl logs -n models deploy/ollama-phi3
+```
+
+### Check Router
+```bash
+# Check LiteLLM
+kubectl get pods -n router
+kubectl logs -n router deploy/litellm
+```
+
+### Resource Usage
+```bash
+# Node resource usage
+kubectl top nodes
+
+# Pod resource usage
+kubectl top pods --all-namespaces
+```
+
+## ⚙️  Configuration
+
+### Update Model Configuration
+Edit the LiteLLM configuration:
+```bash
+kubectl edit configmap -n router litellm-config
+kubectl rollout restart -n router deployment/litellm
+```
+
+### Scale Components
+```bash
+# Scale LiteLLM
+kubectl scale -n router deployment/litellm --replicas=3
+
+# Enable autoscaling
+kubectl autoscale deployment litellm -n router --cpu-percent=70 --min=1 --max=5
+```
+
+## 🔑 API Keys
+
+### Create Virtual Keys in LiteLLM
+1. Access LiteLLM admin interface or use the API
+2. Create virtual keys for customers with budgets and rate limits
+3. Use these keys instead of the master key for production
+
+### Example: Create a Virtual Key
+```bash
+curl -X POST http://127.0.0.1:4000/key/generate \
+  -H 'Authorization: Bearer sk-admin-REPLACE' \
+  -H 'Content-Type: application/json' \
+  -d '{"models": ["llama31-local", "mistral-local"], "max_budget": 100}'
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+1. **Models not loading:**
+   ```bash
+   kubectl describe pod -n models <ollama-pod>
+   kubectl logs -n models <ollama-pod>
+   ```
+
+2. **LiteLLM connection errors:**
+   ```bash
+   kubectl logs -n router deploy/litellm
+   kubectl describe svc -n router litellm
+   ```
+
+3. **Web UI not accessible:**
+   ```bash
+   kubectl get svc -n {{ .Release.Namespace }}
+   kubectl get ingress -n {{ .Release.Namespace }}
+   ```
+
+4. **Database connection issues:**
+   ```bash
+   kubectl logs -n platform deploy/postgres-postgresql
+   kubectl get secret -n platform postgres-postgresql -o yaml
+   ```
+
+### Useful Commands
+```bash
+# Get all resources
+kubectl get all --all-namespaces
+
+# Check events
+kubectl get events --sort-by=.metadata.creationTimestamp
+
+# Debug networking
+kubectl run debug --image=nicolaka/netshoot -it --rm -- bash
+```
+
+## 📚 Next Steps
+
+1. **Security**: Configure TLS certificates with cert-manager
+2. **Monitoring**: Add Prometheus and Grafana for comprehensive monitoring
+3. **Scaling**: Configure HPA for automatic scaling based on load
+4. **GPU Support**: Update Ollama configurations for GPU acceleration
+5. **Production**: Review and update all passwords and security settings
+
+## 📖 Documentation
+
+- Main README: https://github.com/your-org/inference-stack
+- LiteLLM Docs: https://docs.litellm.ai/
+- Ollama Docs: https://ollama.ai/
+- Open WebUI: https://github.com/open-webui/open-webui
+
+Happy inferencing! 🤖✨

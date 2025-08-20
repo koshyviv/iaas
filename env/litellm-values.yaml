@@ -1,0 +1,287 @@
+# LiteLLM Proxy Configuration
+# OpenAI-compatible API gateway with routing, keys, and usage tracking
+
+# Image configuration
+image:
+  repository: ghcr.io/berriai/litellm
+  tag: "main-latest"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 4000
+  targetPort: 4000
+
+# Deployment configuration
+replicaCount: 2
+
+# Environment variables
+env:
+  # Master key for admin access - CHANGE THIS in production
+  - name: LITELLM_MASTER_KEY
+    value: "sk-admin-REPLACE"
+  
+  # Salt key for encryption - CHANGE THIS in production  
+  - name: LITELLM_SALT_KEY
+    value: "sk-salt-REPLACE"
+  
+  # Database connection
+  - name: DATABASE_URL
+    value: "postgresql://litellm:litellm123@pg-postgresql.platform.svc.cluster.local:5432/litellmdb"
+  
+  # Redis cache configuration
+  - name: REDIS_HOST
+    value: "redis-master.platform.svc.cluster.local"
+  - name: REDIS_PORT
+    value: "6379"
+  - name: REDIS_PASSWORD
+    value: "redispass"
+  
+  # LiteLLM mode
+  - name: LITELLM_MODE
+    value: "PRODUCTION"
+  
+  # Logging
+  - name: LITELLM_LOG_LEVEL
+    value: "INFO"
+  
+  # UI settings
+  - name: UI_USERNAME
+    value: "admin"
+  - name: UI_PASSWORD
+    value: "admin123"  # CHANGE THIS in production
+
+# Configuration file
+config:
+  enabled: true
+  mountPath: "/app/config.yaml"
+  configYaml: |
+    general_settings:
+      master_key: "sk-admin-REPLACE"  # CHANGE THIS to match env var
+      database_url: "postgresql://litellm:litellm123@pg-postgresql.platform.svc.cluster.local:5432/litellmdb"
+      
+      # UI Configuration
+      ui_username: "admin"
+      ui_password: "admin123"  # CHANGE THIS in production
+      
+      # Alerting (configure for production)
+      alerting: []
+      # - slack:
+      #     webhook_url: "https://hooks.slack.com/services/..."
+      
+      # Budget alerts
+      budget_alert_ttl: 86400
+      
+      # Rate limiting
+      global_max_parallel_requests: 1000
+      global_max_requests_per_minute: 10000
+
+    # LiteLLM settings
+    litellm_settings:
+      # Logging
+      json_logs: true
+      log_raw_request_response: false
+      
+      # Timeouts
+      request_timeout: 600
+      
+      # Caching
+      cache: true
+      cache_params:
+        type: "redis"
+        host: "redis-master.platform.svc.cluster.local"
+        port: 6379
+        password: "redispass"
+        ttl: 3600
+      
+      # Success callback for usage tracking
+      success_callback: ["langfuse", "posthog"]
+      failure_callback: ["langfuse"]
+      
+      # Model fallbacks
+      fallbacks:
+        - model: "llama31-local"
+          fallbacks: ["mistral-local", "phi3-mini-local"]
+        - model: "mistral-local" 
+          fallbacks: ["llama31-local", "phi3-mini-local"]
+        - model: "phi3-mini-local"
+          fallbacks: ["llama31-local", "mistral-local"]
+
+    # Model configuration - connects to Ollama instances
+    model_list:
+      # Llama 3.1 on worker node 1
+      - model_name: "llama31-local"
+        litellm_params:
+          model: "llama3.1:8b"
+          api_base: "http://ollama-llama31.models.svc.cluster.local:11434"
+          api_key: "ollama"  # Ollama doesn't need real API key
+          custom_llm_provider: "ollama"
+        model_info:
+          mode: "chat"
+          max_tokens: 4096
+          supports_function_calling: false
+          supports_parallel_function_calling: false
+
+      # Mistral on worker node 2  
+      - model_name: "mistral-local"
+        litellm_params:
+          model: "mistral"
+          api_base: "http://ollama-mistral.models.svc.cluster.local:11434"
+          api_key: "ollama"
+          custom_llm_provider: "ollama"
+        model_info:
+          mode: "chat"
+          max_tokens: 8192
+          supports_function_calling: false
+          supports_parallel_function_calling: false
+
+      # Phi3 Mini on control plane (demo)
+      - model_name: "phi3-mini-local"
+        litellm_params:
+          model: "phi3:mini"
+          api_base: "http://ollama-phi3.models.svc.cluster.local:11434"
+          api_key: "ollama"
+          custom_llm_provider: "ollama"
+        model_info:
+          mode: "chat"
+          max_tokens: 4096
+          supports_function_calling: false
+          supports_parallel_function_calling: false
+
+    # Router settings
+    router_settings:
+      routing_strategy: "least-busy"  # Options: simple-shuffle, least-busy, usage-based-routing
+      model_group_alias:
+        gpt-3.5-turbo: "llama31-local"  # Alias for OpenAI compatibility
+        gpt-4: "mistral-local"
+        gpt-4o-mini: "phi3-mini-local"
+      
+      # Load balancing
+      enable_pre_call_checks: true
+      allowed_fails: 3
+      cooldown_time: 30
+      
+      # Retry settings
+      num_retries: 2
+      timeout: 60
+      
+      # Health checks
+      health_check_interval: 300
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 4000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 4000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: false  # Enable when Prometheus is deployed
+  interval: 30s
+  path: /metrics
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: litellm.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - litellm
+          topologyKey: kubernetes.io/hostname
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: true
+
+# RBAC
+rbac:
+  create: true
+
+# Network policy
+networkPolicy:
+  enabled: false
+
+# Volumes for persistent data
+persistence:
+  enabled: false  # LiteLLM is stateless, data is in PostgreSQL
+  
+# Init containers (optional)
+initContainers: []
+
+# Sidecar containers (optional)
+sidecars: []

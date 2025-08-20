@@ -1,0 +1,179 @@
+# PostgreSQL Configuration for LiteLLM
+# Database for storing API keys, usage tracking, and configuration
+
+# Global settings
+global:
+  postgresql:
+    auth:
+      username: "litellm"
+      password: "litellm123"  # CHANGE THIS in production
+      database: "litellmdb"
+      existingSecret: ""  # Use existing secret in production
+    service:
+      ports:
+        postgresql: 5432
+
+# Authentication
+auth:
+  username: "litellm"
+  password: "litellm123"  # CHANGE THIS in production
+  database: "litellmdb"
+  
+  # Use existing secret for production
+  # existingSecret: "postgres-credentials"
+  # secretKeys:
+  #   adminPasswordKey: "admin-password"
+  #   userPasswordKey: "user-password"
+  
+  # Enable password encryption
+  usePasswordFiles: false
+
+# Architecture
+architecture: standalone
+
+# Primary configuration
+primary:
+  # Persistence
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""  # Use default storage class
+    accessModes:
+      - ReadWriteOnce
+    
+  # Resource limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  
+  # PostgreSQL configuration
+  pgHbaConfiguration: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    local   all             all                                     trust
+    host    all             all             127.0.0.1/32            md5
+    host    all             all             ::1/128                 md5
+    host    all             all             0.0.0.0/0               md5
+  
+  # Custom PostgreSQL configuration
+  configuration: |
+    # Memory settings
+    shared_buffers = 128MB
+    effective_cache_size = 512MB
+    work_mem = 4MB
+    maintenance_work_mem = 64MB
+    
+    # Connection settings
+    max_connections = 200
+    
+    # Write-ahead logging
+    wal_level = replica
+    max_wal_size = 1GB
+    min_wal_size = 80MB
+    checkpoint_completion_target = 0.9
+    
+    # Logging
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_statement = 'none'
+    log_min_duration_statement = 1000
+    
+    # Performance
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+
+  # Init scripts (not required; Bitnami chart provisions DB/user from auth)
+  # initdb:
+  #   scripts:
+  #     01-litellm-init.sql: |
+  #       -- Optional: run migrations/seeds here
+
+  # Security context
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Pod security context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+
+  # Affinity and tolerations
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+
+# Backup configuration (optional)
+backup:
+  enabled: false
+  # cronjob:
+  #   schedule: "0 2 * * *"
+  #   historyLimit: 3
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  image:
+    repository: bitnami/postgres-exporter
+    tag: 0.15.0-debian-12-r13
+  
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  service:
+    type: ClusterIP
+    port: 9187
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9187"
+  
+  serviceMonitor:
+    enabled: false  # Enable when Prometheus is deployed
+    namespace: ""
+    interval: 30s
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    postgresql: 5432
+  
+  # Service annotations
+  annotations: {}
+
+# Network policy (enable in production)
+networkPolicy:
+  enabled: false
+  allowExternal: true
+  explicitNamespacesSelector: {}
+
+# Pod disruption budget
+pdb:
+  create: true
+  minAvailable: 1
+
+# RBAC
+rbac:
+  create: true
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false

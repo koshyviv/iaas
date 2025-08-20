@@ -1,0 +1,85 @@
+# MetalLB Configuration for Bare Metal LoadBalancer
+# Configure the IP address pool for your environment
+
+# Enable MetalLB controller and speaker
+controller:
+  enabled: true
+  image:
+    repository: quay.io/metallb/controller
+    tag: v0.15.0
+
+speaker:
+  enabled: true
+  image:
+    repository: quay.io/metallb/speaker
+    tag: v0.15.0
+  
+  # Enable FRR for advanced BGP features (optional)
+  frr:
+    enabled: false
+
+  # Tolerate control-plane taints so speaker can run everywhere
+  tolerateMaster: true
+
+# Resource limits
+resources:
+  controller:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  speaker:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
+
+# Tolerations for speaker to run on all nodes (kept above under speaker.tolerateMaster)
+
+# Monitoring
+prometheus:
+  scrapeAnnotations: true
+  metricsPort: 7472
+
+# IP Address Pool Configuration
+# IMPORTANT: Update these IP addresses for your network environment
+ipAddressPools:
+  - name: default
+    addresses:
+      - "10.0.0.240-10.0.0.250"  # CHANGE THIS to your available IP range
+    autoAssign: true
+    avoidBuggyIPs: true
+
+# L2 Advertisement Configuration
+l2Advertisements:
+  - name: l2-adv
+    ipAddressPools:
+      - default
+    # Optional: specify interfaces
+    # interfaces:
+    #   - eth0
+
+# BGP Configuration (if using BGP mode instead of L2)
+bgpPeers: []
+# Example BGP peer configuration:
+# - name: peer1
+#   peerAddress: 192.168.1.1
+#   peerASN: 64501
+#   myASN: 64500
+
+bgpAdvertisements: []
+# Example BGP advertisement:
+# - name: bgp-adv
+#   ipAddressPools:
+#     - default
+#   aggregationLength: 32

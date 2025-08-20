@@ -1,0 +1,200 @@
+# Redis Configuration for LiteLLM Caching
+# High-performance caching and session storage
+
+# Architecture - standalone for simplicity, cluster for production
+architecture: standalone
+
+# Authentication
+auth:
+  enabled: true
+  password: "redispass"  # CHANGE THIS in production
+  # Use existing secret in production
+  # existingSecret: "redis-credentials"
+  # existingSecretPasswordKey: "password"
+
+# Master configuration (for standalone)
+master:
+  # Persistence
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""  # Use default storage class
+    accessModes:
+      - ReadWriteOnce
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Redis configuration
+  configuration: |
+    # Memory management
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    
+    # Persistence
+    save 900 1
+    save 300 10
+    save 60 10000
+    
+    # Network
+    timeout 0
+    tcp-keepalive 300
+    
+    # Logging
+    loglevel notice
+    
+    # Security
+    protected-mode yes
+    
+    # Performance
+    tcp-backlog 511
+    databases 16
+    
+    # Append only file
+    appendonly yes
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      redis: 6379
+    
+  # Security context
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Pod security context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+
+  # Affinity and node placement
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+
+  # Liveness and readiness probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 5
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+
+# Replica configuration (disabled for standalone)
+replica:
+  replicaCount: 0
+
+# Sentinel configuration (disabled for standalone)
+sentinel:
+  enabled: false
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  image:
+    repository: bitnami/redis-exporter
+    tag: 1.58.0-debian-12-r1
+  
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  service:
+    type: ClusterIP
+    port: 9121
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+  
+  serviceMonitor:
+    enabled: false  # Enable when Prometheus is deployed
+    namespace: ""
+    interval: 30s
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+# RBAC
+rbac:
+  create: true
+
+# Network policy (enable in production)
+networkPolicy:
+  enabled: false
+  allowExternal: true
+
+# Pod disruption budget
+pdb:
+  create: true
+  minAvailable: 1
+
+# Volume permissions (for persistence)
+volumePermissions:
+  enabled: false
+  image:
+    repository: bitnami/bitnami-shell
+    tag: 12-debian-12-r16
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Backup configuration (optional)
+backup:
+  enabled: false
+  # cronjob:
+  #   schedule: "0 3 * * *"
+  #   historyLimit: 3
+
+# TLS configuration (for production)
+tls:
+  enabled: false
+  # certificatesSecret: "redis-tls"
+  # certFilename: "tls.crt"
+  # certKeyFilename: "tls.key"
+  # certCAFilename: "ca.crt"
+
+# Common labels
+commonLabels:
+  app.kubernetes.io/part-of: "inference-stack"
+  app.kubernetes.io/component: "cache"
+
+# Common annotations
+commonAnnotations: {}

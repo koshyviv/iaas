@@ -1,0 +1,231 @@
+# Open WebUI Configuration
+# Chat interface that connects to LiteLLM proxy
+
+# Image configuration
+image:
+  repository: ghcr.io/open-webui/open-webui
+  tag: "main"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8080
+
+# Environment variables
+env:
+  # LiteLLM connection
+  - name: OPENAI_API_BASE_URL
+    value: "http://litellm.router.svc.cluster.local:4000/v1"
+  - name: OPENAI_API_KEY
+    value: "sk-admin-REPLACE"  # CHANGE THIS to match LiteLLM master key
+  
+  # UI Configuration
+  - name: WEBUI_NAME
+    value: "Inference Stack"
+  - name: WEBUI_URL
+    value: "http://inference.local"
+  
+  # Authentication settings
+  - name: ENABLE_SIGNUP
+    value: "true"
+  - name: DEFAULT_USER_ROLE
+    value: "user"
+  - name: ENABLE_LOGIN_FORM
+    value: "true"
+  
+  # Model settings
+  - name: DEFAULT_MODELS
+    value: "llama31-local,mistral-local,phi3-mini-local"
+  - name: MODEL_FILTER_ENABLED
+    value: "true"
+  - name: MODEL_FILTER_LIST
+    value: "llama31-local;mistral-local;phi3-mini-local"
+  
+  # Features
+  - name: ENABLE_RAG_HYBRID_SEARCH
+    value: "true"
+  - name: ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION
+    value: "false"
+  - name: ENABLE_IMAGE_GENERATION
+    value: "false"  # Set to true if you have image models
+  
+  # File uploads
+  - name: ENABLE_FILE_UPLOAD
+    value: "true"
+  - name: FILE_SIZE_LIMIT
+    value: "25"  # MB
+  
+  # WebSearch (optional)
+  - name: ENABLE_WEB_SEARCH
+    value: "false"
+  
+  # Database (SQLite by default, can use PostgreSQL)
+  - name: DATABASE_URL
+    value: "sqlite:///app/backend/data/webui.db"
+  
+  # Security
+  - name: WEBUI_SECRET_KEY
+    value: "your-secret-key-change-this"  # CHANGE THIS in production
+  
+  # Logging
+  - name: LOG_LEVEL
+    value: "INFO"
+  
+  # Custom settings
+  - name: SHOW_ADMIN_DETAILS
+    value: "false"
+  - name: ADMIN_EMAIL
+    value: "admin@yourcompany.com"  # CHANGE THIS
+  
+  # OAuth (optional)
+  - name: ENABLE_OAUTH_SIGNUP
+    value: "false"
+  # - name: OAUTH_CLIENT_ID
+  #   value: "your-oauth-client-id"
+  # - name: OAUTH_CLIENT_SECRET
+  #   value: "your-oauth-client-secret"
+
+# Persistence for user data and chats
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: ""  # Use default storage class
+  accessMode: ReadWriteOnce
+  mountPath: /app/backend/data
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/client-max-body-size: "25m"
+  hosts:
+    - host: inference.local  # CHANGE THIS to your domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # tls:
+  #   - secretName: inference-tls
+  #     hosts:
+  #       - inference.local
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+# RBAC
+rbac:
+  create: true
+
+# Network policy
+networkPolicy:
+  enabled: false
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Init containers for setup
+initContainers:
+  - name: init-permissions
+    image: busybox:1.36
+    command: ['sh', '-c', 'chown -R 1000:1000 /app/backend/data']
+    volumeMounts:
+      - name: data
+        mountPath: /app/backend/data
+    securityContext:
+      runAsUser: 0
+
+# Additional volumes
+extraVolumes: []
+
+# Additional volume mounts
+extraVolumeMounts: []
+
+# Configuration files
+configMaps: {}
+
+# Secrets
+secrets: {}
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: false  # Enable when Prometheus is deployed
+  interval: 30s
+  path: /metrics
+
+# Custom labels
+labels:
+  app.kubernetes.io/part-of: "inference-stack"
+  app.kubernetes.io/component: "ui"
+
+# Custom annotations
+annotations: {}
