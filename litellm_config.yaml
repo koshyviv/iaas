@@ -1,13 +1,25 @@
 model_list:
-  - model_name: local-llama3.2
+  - model_name: Gemma3-4b
     litellm_params:
-      model: ollama/llama3.2:1b
+      model: ollama/gemma3:4b
+      api_base: http://ollama:11434
+  - model_name: GPT-OSS-20b
+    litellm_params:
+      model: ollama/gpt-oss:20b
+      api_base: http://ollama:11434
+  - model_name: BGE-m3
+    litellm_params:
+      model: ollama/bge-m3
       api_base: http://ollama:11434
 
 litellm_settings:
   # Send traces to Langfuse
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
+
+general_settings:
+  store_model_in_db: true
+  store_prompts_in_spend_logs: true
 
 # Optional server settings
 router_settings:

@@ -6,12 +6,22 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama
     ports:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
-    entrypoint: ["/bin/sh", "-lc", "ollama serve & sleep 2 && ollama pull llama3.2:1b || true && wait"]
+    # entrypoint: ["/bin/sh", "-lc", "ollama serve & sleep 2 && ollama pull llama3.2:1b || true && wait"]
+    entrypoint: 
+    - /bin/sh
+    - -lc
+    - |
+      ollama serve &
+      # wait for API to be ready
+      until ollama list >/dev/null 2>&1; do sleep 1; done
+      for m in gemma3:4b bge-m3 gpt-oss:20b; do
+        ollama pull "$$m" || true
+      done
+      wait
     restart: unless-stopped
 
   langfuse-worker:
@@ -85,15 +95,15 @@ services:
     environment:
       <<: *langfuse-worker-env
       NEXTAUTH_SECRET: mysecret # CHANGEME
-      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
-      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
-      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
-      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
-      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
-      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
-      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-aistack}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-Private AI Stack}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-local}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-Local Stack}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-lf-pk-123456789}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-lf-sk-123456789}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-me@ai.com}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-User}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-test@12345}
 
   clickhouse:
     image: docker.io/clickhouse/clickhouse-server
@@ -167,20 +177,39 @@ services:
       - 127.0.0.1:5432:5432
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
+  
+  litellmdb:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: dbpassword9090
+    ports:
+      - "5433:5432"
+    volumes:
+      - litellmdb_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
-    container_name: litellm
     depends_on:
       - ollama
       - langfuse-web
+      - litellmdb
     ports:
       - "4001:4000"
     environment:
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-demo-litellm}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-demo}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-demo}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-test@12345}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-lf-pk-123456789}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-lf-sk-123456789}
       LANGFUSE_HOST: http://langfuse-web:3000
+      DATABASE_URL: "postgresql://llmproxy:dbpassword9090@litellmdb:5432/litellm"
+      STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
     command: --config /app/config.yaml --detailed_debug
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
@@ -188,15 +217,15 @@ services:
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
-    container_name: openwebui
     depends_on:
       - litellm
     ports:
       - "3001:8080"
     environment:
       # Point OpenWebUI to LiteLLM as an OpenAI-compatible gateway
-      OPENAI_API_BASE_URL: http://litellm:4001/v1
-      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-demo-litellm}
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-test@12345}
+      ENABLE_FORWARD_USER_INFO_HEADERS: True
     volumes:
       - openwebui_data:/app/backend/data
     restart: unless-stopped
@@ -212,5 +241,9 @@ volumes:
     driver: local
   openwebui_data:
   ollama_models:
+  prometheus_data:
+    driver: local
+  litellmdb_data:
+    name: litellmdb_data
 
 
